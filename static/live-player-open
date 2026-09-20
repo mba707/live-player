@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""Open a Live Player stream URL in VLC. Installed as the liveplayer: handler."""
+
+from __future__ import annotations
+
+import os
+import sys
+import urllib.parse
+from shutil import which
+
+
+def stream_url(raw: str) -> str:
+    parsed = urllib.parse.urlparse(raw)
+    query = urllib.parse.parse_qs(parsed.query)
+    url = (query.get("url") or [""])[0]
+    if not url:
+        path = urllib.parse.unquote(parsed.path.lstrip("/"))
+        url = path.replace("http:/", "http://", 1) if path.startswith("http:/") else path
+    if not url.startswith(("http://", "https://")):
+        raise ValueError(f"refused {raw!r}")
+    return url
+
+
+def vlc_command(platform: str | None = None) -> list[str]:
+    plat = platform or sys.platform
+    if plat == "darwin":
+        return ["open", "-a", "VLC"]
+    if which("vlc"):
+        return ["vlc"]
+    if which("flatpak"):
+        return ["flatpak", "run", "org.videolan.VLC"]
+    raise FileNotFoundError("VLC is not installed")
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 2:
+        print("usage: live-player-open liveplayer:?url=http://...", file=sys.stderr)
+        return 2
+    try:
+        url = stream_url(argv[1])
+        command = vlc_command()
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"live-player-open: {exc}", file=sys.stderr)
+        return 1
+    os.execvp(command[0], [*command, url])
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

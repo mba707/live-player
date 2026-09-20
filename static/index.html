@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Player</title>
+  <style>
+    :root {
+      --bg: #1a1d24;
+      --panel: #262b36;
+      --panel-2: #313846;
+      --line: #454c5c;
+      --text: #f4f7fb;
+      --muted: #b4bccb;
+      --live: #3dd68c;
+      --offline: #6b7280;
+      --twitch: #9146ff;
+      --youtube: #ff4d4d;
+      --kick: #53fc18;
+      --danger: #ff6b6b;
+      --accent: #6aa6ff;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 "Segoe UI", system-ui, sans-serif; }
+    header {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+      position: sticky; top: 0; z-index: 5;
+    }
+    h1 { margin: 0; font-size: 18px; letter-spacing: 0.02em; }
+    .stats { display: flex; gap: 12px; color: var(--muted); align-items: baseline; flex-wrap: wrap; }
+    .stats strong { color: var(--text); }
+    .stats .live strong { color: var(--live); }
+    .stats a { color: var(--muted); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
+    .stats a:hover { color: var(--accent); }
+    .actions { display: flex; gap: 8px; }
+    button, .btn {
+      border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer;
+      background: var(--panel-2); color: var(--text); font-weight: 600;
+    }
+    button.primary { background: var(--accent); color: #081018; }
+    button.ghost:hover, button:hover { filter: brightness(1.08); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    main { padding: 16px 20px 40px; }
+    .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 12px; overflow: hidden; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: #171a21; }
+    tr.offline { color: var(--muted); }
+    tr:last-child td { border-bottom: 0; }
+    .name { font-weight: 700; }
+    .title { color: var(--muted); max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+      padding: 3px 8px; border-radius: 999px; background: #2a2f3a;
+    }
+    .badge.live { background: rgba(61, 214, 140, 0.15); color: var(--live); }
+    .badge.offline { color: var(--offline); }
+    .badge.youtube { color: var(--youtube); }
+    .badge.twitch { color: var(--twitch); }
+    .badge.kick { color: #b6ff8a; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .play, a.play {
+      width: 34px; height: 34px; border-radius: 50%; background: var(--live); color: #082012;
+      display: grid; place-items: center; font-size: 13px; text-decoration: none;
+    }
+    .play:disabled, a.play[aria-disabled="true"] { background: #2d3340; color: #7c8496; pointer-events: none; }
+    .icon-btn { width: 32px; height: 32px; border-radius: 8px; background: transparent; color: var(--muted); }
+    .icon-btn:hover { background: #2d3340; color: var(--danger); }
+    dialog {
+      border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text);
+      width: min(620px, 94vw); padding: 0;
+    }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+    .modal-head, .modal-body, .modal-foot { padding: 16px 18px; }
+    .modal-head { border-bottom: 1px solid var(--line); font-weight: 700; }
+    .modal-foot { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); }
+    label { display: block; margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    dialog input, dialog select {
+      width: 100%; margin-bottom: 14px; padding: 10px 12px; border-radius: 8px;
+      border: 1px solid var(--line); background: #12141a; color: var(--text);
+    }
+    .toolbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+    .filters button { border: 1px solid var(--line); }
+    .filters button.active.youtube { border-color: var(--youtube); color: var(--youtube); }
+    .filters button.active.twitch { border-color: var(--twitch); color: var(--twitch); }
+    .filters button.active.kick { border-color: var(--kick); color: var(--kick); }
+    .sort {
+      display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 700;
+    }
+    .sort select {
+      min-width: 180px; margin: 0; padding: 8px 10px; border-radius: 8px;
+      border: 1px solid var(--line); background: #12141a; color: var(--text); font-weight: 600;
+    }
+    .platforms { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+    .platforms button { border: 1px solid var(--line); }
+    .platforms button.active.youtube { border-color: var(--youtube); color: var(--youtube); }
+    .platforms button.active.twitch { border-color: var(--twitch); color: var(--twitch); }
+    .platforms button.active.kick { border-color: var(--kick); color: var(--kick); }
+    .toast {
+      position: fixed; right: 16px; bottom: 16px; max-width: 460px; background: var(--panel-2);
+      border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: none;
+    }
+    .toast.show { display: block; }
+    .toast-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+    .toast code { display: block; margin-top: 6px; word-break: break-all; color: var(--text); }
+    .banner {
+      display: none; margin: 0 20px 16px; padding: 10px 12px; border: 1px solid var(--line);
+      border-radius: 10px; background: var(--panel); color: var(--muted);
+    }
+    .banner.show { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .hint { font-size: 12px; color: var(--muted); }
+    a { color: var(--accent); }
+    .results { display: grid; gap: 8px; max-height: 360px; overflow: auto; margin: 4px 0 8px; }
+    .result {
+      display: grid; grid-template-columns: 48px 1fr auto; gap: 12px; align-items: center;
+      width: 100%; text-align: left; padding: 10px; border: 1px solid var(--line); background: #12141a;
+    }
+    .result:hover { border-color: var(--accent); }
+    .result img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; background: #2a2f3a; }
+    .result .meta { color: var(--muted); font-size: 12px; }
+    .result .desc { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Live Player</h1>
+      <div class="stats">
+        <span class="live"><strong id="liveCount">0</strong> live</span>
+        <span><strong id="offlineCount">0</strong> offline</span>
+        <span id="refreshMeta">Not refreshed yet</span>
+        <a href="/static/vlc-setup.html">VLC opener</a>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="refreshBtn" class="ghost">Refresh</button>
+      <button id="addBtn" class="primary">Add</button>
+    </div>
+  </header>
+  <main>
+    <div id="vlcBanner" class="banner">
+      <span>Chrome will not start VLC until this Mac or Linux computer installs the opener once.</span>
+      <div class="actions">
+        <a class="btn" href="/static/vlc-setup.html">Install opener</a>
+        <button type="button" id="dismissVlc" class="ghost">Dismiss</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="filters" id="filters">
+        <button type="button" data-filter="youtube" class="active youtube">YouTube</button>
+        <button type="button" data-filter="twitch" class="active twitch">Twitch</button>
+        <button type="button" data-filter="kick" class="active kick">Kick</button>
+      </div>
+      <label class="sort">
+        Sort by
+        <select id="sortBy">
+          <option value="viewers">Viewer count</option>
+          <option value="name">Alphabetical by channel</option>
+        </select>
+      </label>
+    </div>
+    <div id="empty" class="empty">Add a YouTube, Twitch, or Kick channel to start the master list.</div>
+    <table id="table" hidden>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Status</th>
+          <th>Channel</th>
+          <th>Platform</th>
+          <th>Title</th>
+          <th>Viewers</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
+
+  <dialog id="addDialog">
+    <form id="addForm" method="dialog">
+      <div class="modal-head">Add channel</div>
+      <div class="modal-body">
+        <label>Platform</label>
+        <div class="platforms">
+          <button type="button" data-platform="youtube">YouTube</button>
+          <button type="button" data-platform="twitch" class="active twitch">Twitch</button>
+          <button type="button" data-platform="kick">Kick</button>
+        </div>
+        <label for="username">Username or channel URL</label>
+        <input id="username" name="username" placeholder="informationzulu, @handle, or paste a URL" required>
+        <p class="hint">Search first, then pick the exact account. YouTube especially can have more than one match.</p>
+        <div id="searchResults" class="results" hidden></div>
+        <p id="addError" class="hint" style="color: var(--danger)"></p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" id="cancelAdd">Cancel</button>
+        <button class="primary" id="saveAdd" value="save">Search</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let storedFilters = null;
+    try { storedFilters = JSON.parse(localStorage.getItem("liveplayer.filters") || "null"); } catch { storedFilters = null; }
+    const state = {
+      platform: "twitch",
+      channels: [],
+      matches: [],
+      filters: storedFilters || { youtube: true, twitch: true, kick: true },
+      sort: localStorage.getItem("liveplayer.sort") || "viewers",
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const toast = (html, timeoutMs = 8000) => {
+      const el = $("toast");
+      el.innerHTML = html;
+      el.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.classList.remove("show"), timeoutMs);
+    };
+
+    if (!localStorage.getItem("liveplayer.vlcBanner")) {
+      $("vlcBanner").classList.add("show");
+    }
+    $("dismissVlc").addEventListener("click", () => {
+      localStorage.setItem("liveplayer.vlcBanner", "dismissed");
+      $("vlcBanner").classList.remove("show");
+    });
+    document.querySelectorAll("#filters [data-filter]").forEach((btn) => {
+      const key = btn.dataset.filter;
+      btn.className = state.filters[key] ? `active ${key}` : "";
+      btn.addEventListener("click", () => {
+        state.filters[key] = !state.filters[key];
+        if (!state.filters.youtube && !state.filters.twitch && !state.filters.kick) {
+          state.filters[key] = true;
+        }
+        btn.className = state.filters[key] ? `active ${key}` : "";
+        localStorage.setItem("liveplayer.filters", JSON.stringify(state.filters));
+        renderRows();
+      });
+    });
+    $("sortBy").value = state.sort === "name" ? "name" : "viewers";
+    $("sortBy").addEventListener("change", () => {
+      state.sort = $("sortBy").value;
+      localStorage.setItem("liveplayer.sort", state.sort);
+      renderRows();
+    });
+
+    document.querySelectorAll(".platforms button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.platform = btn.dataset.platform;
+        document.querySelectorAll(".platforms button").forEach((other) => {
+          other.className = other === btn ? `active ${state.platform}` : "";
+        });
+        clearSearchResults();
+      });
+    });
+
+    $("addBtn").addEventListener("click", () => {
+      $("addError").textContent = "";
+      $("username").value = "";
+      clearSearchResults();
+      $("addDialog").showModal();
+      $("username").focus();
+    });
+    $("cancelAdd").addEventListener("click", () => $("addDialog").close());
+
+    $("addForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const query = $("username").value.trim();
+      $("saveAdd").disabled = true;
+      $("addError").textContent = "";
+      try {
+        const response = await fetch("/api/channels/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ platform: state.platform, query }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Could not search channels");
+        renderSearchResults(data.results || []);
+      } catch (error) {
+        $("addError").textContent = error.message;
+        clearSearchResults();
+      } finally {
+        $("saveAdd").disabled = false;
+      }
+    });
+
+    function clearSearchResults() {
+      state.matches = [];
+      $("searchResults").hidden = true;
+      $("searchResults").innerHTML = "";
+    }
+
+    function renderSearchResults(results) {
+      state.matches = results;
+      const box = $("searchResults");
+      if (!results.length) {
+        box.hidden = true;
+        box.innerHTML = "";
+        $("addError").textContent = "No matching channels.";
+        return;
+      }
+      box.hidden = false;
+      box.innerHTML = results.map((item, index) => `
+        <button type="button" class="result" data-match="${index}">
+          <img src="${escapeAttr(item.thumbnail || "")}" alt="">
+          <div>
+            <div class="name">${escapeHtml(item.display_name)}</div>
+            <div class="meta">${escapeHtml(item.username)}${item.subscribers ? " · " + escapeHtml(item.subscribers) : ""}</div>
+            <div class="desc">${escapeHtml(item.description || item.url)}</div>
+          </div>
+          <span>Add</span>
+        </button>
+      `).join("");
+      box.querySelectorAll("[data-match]").forEach((btn) => {
+        btn.addEventListener("click", () => addMatch(Number(btn.dataset.match)));
+      });
+    }
+
+    async function addMatch(index) {
+      const item = state.matches[index];
+      if (!item) return;
+      $("addError").textContent = "";
+      const response = await fetch("/api/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: item.platform,
+          username: item.username,
+          channel_id: item.channel_id,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        $("addError").textContent = data.detail || "Could not add channel";
+        return;
+      }
+      $("addDialog").close();
+      await loadChannels();
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replace(/`/g, "");
+    }
+
+    $("refreshBtn").addEventListener("click", async () => {
+      $("refreshBtn").disabled = true;
+      try {
+        const response = await fetch("/api/channels/refresh", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Refresh failed");
+        render(data);
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        $("refreshBtn").disabled = false;
+      }
+    });
+
+    async function loadChannels() {
+      const response = await fetch("/api/channels");
+      render(await response.json());
+    }
+
+    function channelName(channel) {
+      return (channel.display_name || channel.username || "").toLowerCase();
+    }
+
+    function visibleChannels() {
+      const filtered = state.channels.filter((channel) => state.filters[channel.platform]);
+      if (state.sort === "name") {
+        return filtered.slice().sort((left, right) => {
+          const names = channelName(left).localeCompare(channelName(right));
+          return names || (left.title || "").localeCompare(right.title || "");
+        });
+      }
+      return filtered.slice().sort((left, right) => {
+        if (Boolean(left.live) !== Boolean(right.live)) return left.live ? -1 : 1;
+        if ((right.viewers || 0) !== (left.viewers || 0)) return (right.viewers || 0) - (left.viewers || 0);
+        return channelName(left).localeCompare(channelName(right));
+      });
+    }
+
+    function render(data) {
+      state.channels = data.channels || [];
+      $("refreshMeta").textContent = data.last_refresh
+        ? `Checked ${new Date(data.last_refresh).toLocaleTimeString()}`
+        : "Not refreshed yet";
+      renderRows();
+    }
+
+    function renderRows() {
+      const rows = visibleChannels();
+      const live = rows.filter((channel) => channel.live).length;
+      $("liveCount").textContent = live;
+      $("offlineCount").textContent = rows.length - live;
+      const hasAny = state.channels.length > 0;
+      $("empty").hidden = rows.length > 0;
+      $("empty").textContent = hasAny
+        ? "No channels match these filters."
+        : "Add a YouTube, Twitch, or Kick channel to start the master list.";
+      $("table").hidden = rows.length === 0;
+      $("rows").innerHTML = rows.map(rowHtml).join("");
+      $("rows").querySelectorAll("a.play[data-play]").forEach((link) => {
+        link.addEventListener("click", () => startStream(link.dataset.play));
+      });
+      $("rows").querySelectorAll("[data-remove]").forEach((btn) => {
+        btn.addEventListener("click", () => removeChannel(btn.dataset.remove, btn.dataset.name || ""));
+      });
+    }
+
+    function handlerHref(streamUrl) {
+      return `liveplayer:?url=${encodeURIComponent(streamUrl)}`;
+    }
+
+    async function startStream(id) {
+      try {
+        const response = await fetch(`/api/channels/${id}/play`, { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Could not start stream");
+      } catch (error) {
+        toast(escapeHtml(error.message));
+      }
+    }
+
+    function rowHtml(channel) {
+      const viewers = channel.live ? Number(channel.viewers).toLocaleString() : "—";
+      const proxy = `${location.protocol}//${location.host}/api/channels/${channel.id}/stream`;
+      const playControl = channel.live
+        ? `<a class="play" data-play="${channel.id}" href="${escapeAttr(handlerHref(proxy))}" title="Open in VLC">▶</a>`
+        : `<button class="play" disabled title="Offline">▶</button>`;
+      return `
+        <tr class="${channel.live ? "live" : "offline"}">
+          <td>
+            ${playControl}
+          </td>
+          <td><span class="badge ${channel.live ? "live" : "offline"}"><span class="dot"></span>${channel.live ? "Live" : "Offline"}</span></td>
+          <td>
+            <div class="name">${escapeHtml(channel.display_name || channel.username)}</div>
+            <div class="title">${escapeHtml(channel.game || channel.last_error || "")}</div>
+          </td>
+          <td><span class="badge ${channel.platform}">${channel.platform}</span></td>
+          <td class="title">${escapeHtml(channel.title || "")}</td>
+          <td>${viewers}</td>
+          <td><button class="icon-btn" data-remove="${channel.id}" data-name="${escapeAttr(channel.display_name || channel.username)}" title="Remove">✕</button></td>
+        </tr>`;
+    }
+
+    async function removeChannel(id, name) {
+      const label = name || "this channel";
+      if (!confirm(`Remove ${label} from the master list? Every stream from this channel will be removed.`)) return;
+      await fetch(`/api/channels/${id}`, { method: "DELETE" });
+      await loadChannels();
+    }
+
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[char]));
+    }
+
+    loadChannels();
+    setInterval(loadChannels, 10000);
+  </script>
+</body>
+</html>
