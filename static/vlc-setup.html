@@ -34,7 +34,7 @@
 
     <h2>1. Install</h2>
     <p>Same command on <strong>macOS and Linux</strong>. Do not use sudo. Do not double-click a downloaded file.</p>
-    <pre id="command">curl -fsSL http://192.168.50.49:8112/static/install-vlc-handler.sh | bash</pre>
+    <pre id="command">curl -fsSL http://localhost:8112/static/install-vlc-handler.sh | bash</pre>
     <div class="row">
       <button type="button" id="copy">Copy command</button>
       <span id="copied" hidden class="ok">Copied</span>
@@ -55,13 +55,14 @@
     <h2>Requirements</h2>
     <ul>
       <li>VLC already installed (Mac: <code>/Applications/VLC.app</code>).</li>
-      <li>This computer can reach <code>192.168.50.49</code>.</li>
+      <li>This computer can reach the Live Player host.</li>
     </ul>
   </main>
   <script>
-    const command = document.getElementById("command").textContent.trim();
+    const commandEl = document.getElementById("command");
+    commandEl.textContent = `curl -fsSL ${location.origin}/static/install-vlc-handler.sh | bash`;
     document.getElementById("copy").addEventListener("click", async () => {
-      await navigator.clipboard.writeText(command);
+      await navigator.clipboard.writeText(commandEl.textContent.trim());
       document.getElementById("copied").hidden = false;
     });
   </script>

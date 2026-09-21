@@ -52,21 +52,21 @@ async def test_play_returns_vlc_playlist(api_client):
     play = await api_client.post(f"/api/channels/{channel_id}/play")
     assert play.status_code == 200
     payload = play.json()
-    assert payload["stream_url"] == "http://192.168.50.49:8888/"
+    assert payload["stream_url"] == "http://localhost:8888/"
     assert payload["vlc_url"] == (
-        f"liveplayer:?url=http%3A%2F%2F192.168.50.49%3A8112%2Fapi%2Fchannels%2F{channel_id}%2Fstream"
+        f"liveplayer:?url=http%3A%2F%2Flocalhost%3A8112%2Fapi%2Fchannels%2F{channel_id}%2Fstream"
     )
     assert api_client.player.started == ["https://www.twitch.tv/shroud"]
 
     stream = await api_client.get(f"/api/channels/{channel_id}/stream", follow_redirects=False)
     assert stream.status_code == 302
-    assert stream.headers["location"] == "http://192.168.50.49:8888/"
+    assert stream.headers["location"] == "http://localhost:8888/"
 
     playlist = await api_client.get(f"/api/channels/{channel_id}/play.m3u")
     assert playlist.status_code == 200
     assert "audio/x-mpegurl" in playlist.headers["content-type"]
     assert "attachment;" in playlist.headers.get("content-disposition", "")
-    assert "http://192.168.50.49:8888/" in playlist.text
+    assert "http://localhost:8888/" in playlist.text
 
 
 async def test_play_rejects_offline_channel(api_client):

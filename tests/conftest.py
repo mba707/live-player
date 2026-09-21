@@ -126,7 +126,7 @@ def make_resolved(
 def make_settings(tmp_path: Path, **overrides) -> Settings:
     values = dict(
         data_file=tmp_path / "livestreams.json",
-        public_host="192.168.50.49",
+        public_host="localhost",
         public_port=8112,
         listen_host="0.0.0.0",
         listen_port=8112,

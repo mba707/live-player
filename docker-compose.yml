@@ -8,7 +8,7 @@ services:
       - "8888-8897:8888-8897"
     environment:
       - TZ=America/Chicago
-      - PUBLIC_HOST=192.168.50.49
+      - PUBLIC_HOST=${PUBLIC_HOST:-localhost}
       - PUBLIC_PORT=8112
       - DATA_FILE=/data/livestreams.json
       - POLL_SECONDS=60

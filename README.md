@@ -10,9 +10,9 @@ Inspired by [Livestream.Monitor](https://github.com/laurencee/Livestream.Monitor
 docker compose up -d --build
 ```
 
-UI: http://192.168.50.49:8112
+UI: http://localhost:8112
 
-Play starts `streamlink` in the container and hands VLC an `.m3u` playlist on the LAN (`8888-8897`).
+Play starts `streamlink` in the container and hands VLC a stream on ports `8888-8897`. For access from other machines on your LAN, set `PUBLIC_HOST` in a local `.env` file (see `.env.example`).
 
 ## Tests
 

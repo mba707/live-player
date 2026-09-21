@@ -1,6 +1,6 @@
 #!/bin/sh
 # Live Player VLC opener for macOS and Linux. Do not use sudo.
-#   curl -fsSL http://192.168.50.49:8112/static/install-vlc-handler.sh | bash
+#   curl -fsSL http://localhost:8112/static/install-vlc-handler.sh | bash
 set -eu
 
 OS="$(uname -s)"

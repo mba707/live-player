@@ -28,24 +28,24 @@ def test_playlist_points_at_lan_vlc_url(tmp_path):
 
     body = player.playlist_body(session)
     assert body.splitlines()[0] == "#EXTM3U"
-    assert "http://192.168.50.49:8888/" in body
-    assert player.vlc_url(8888) == "liveplayer:?url=http%3A%2F%2F192.168.50.49%3A8888%2F"
+    assert "http://localhost:8888/" in body
+    assert player.vlc_url(8888) == "liveplayer:?url=http%3A%2F%2Flocalhost%3A8888%2F"
     assert player.vlc_launch_url("abc123") == (
-        "liveplayer:?url=http%3A%2F%2F192.168.50.49%3A8112%2Fapi%2Fchannels%2Fabc123%2Fstream"
+        "liveplayer:?url=http%3A%2F%2Flocalhost%3A8112%2Fapi%2Fchannels%2Fabc123%2Fstream"
     )
     parsed = urlparse(player.vlc_launch_url("abc123"))
     assert parsed.scheme == "liveplayer"
     assert parsed.netloc == ""
     assert parse_qs(parsed.query)["url"] == [
-        "http://192.168.50.49:8112/api/channels/abc123/stream"
+        "http://localhost:8112/api/channels/abc123/stream"
     ]
     assert player.public_playlist_url("abc123").endswith("/api/channels/abc123/play.m3u")
 
 
 def test_liveplayer_opener_reads_stream_url():
     opener = runpy.run_path(str(OPENER))
-    raw = "liveplayer:?url=http%3A%2F%2F192.168.50.49%3A8888%2F"
-    assert opener["stream_url"](raw) == "http://192.168.50.49:8888/"
+    raw = "liveplayer:?url=http%3A%2F%2Flocalhost%3A8888%2F"
+    assert opener["stream_url"](raw) == "http://localhost:8888/"
     try:
         opener["stream_url"]("liveplayer:?url=file:///etc/passwd")
         raise AssertionError("file URLs must be rejected")
