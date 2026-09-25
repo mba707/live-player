@@ -33,7 +33,7 @@
     <p>One-time setup on the computer that has Chrome and VLC. After this, Play opens VLC in one click.</p>
 
     <h2>1. Install</h2>
-    <p>Same command on <strong>macOS and Linux</strong>. Do not use sudo. Do not double-click a downloaded file.</p>
+    <p><strong>macOS and Linux:</strong> same command. Do not use sudo. Do not double-click a downloaded file.</p>
     <pre id="command">curl -fsSL http://localhost:8112/static/install-vlc-handler.sh | bash</pre>
     <div class="row">
       <button type="button" id="copy">Copy command</button>
@@ -41,20 +41,29 @@
     </div>
     <p>The script detects the OS. On a Mac it builds <code>~/Applications/Live Player VLC.app</code>. On Linux it registers a desktop handler. You should see <span class="ok">Done</span> and the path to the handler.</p>
 
+    <p><strong>Windows:</strong> open a normal (non-admin) PowerShell window and run:</p>
+    <pre id="commandWin">irm http://localhost:8112/static/install-vlc-handler.ps1 | iex</pre>
+    <div class="row">
+      <button type="button" id="copyWin">Copy command</button>
+      <span id="copiedWin" hidden class="ok">Copied</span>
+    </div>
+    <p>The script writes <code>%LOCALAPPDATA%\LivePlayer\live-player-open.ps1</code> and registers it as the <code>liveplayer:</code> handler in your user's registry hive — no admin rights or elevation needed. You should see <span class="ok">Done</span> and the path to the handler.</p>
+
     <h2>2. Restart Chrome</h2>
     <p>Fully quit Chrome, then reopen Live Player.</p>
     <ul>
       <li><strong>macOS:</strong> Cmd+Q. Closing the window is not enough.</li>
       <li><strong>Linux:</strong> Quit Chrome completely, or log out of the desktop session if the first Play click does nothing.</li>
+      <li><strong>Windows:</strong> Right-click the Chrome icon in the system tray and Exit, or check Task Manager for lingering <code>chrome.exe</code> processes.</li>
     </ul>
 
     <h2>3. Click Play</h2>
-    <p>Click ▶ on a live row. Chrome should ask to open <strong>Live Player VLC</strong>. Click Open. VLC starts on that stream via streamlink.</p>
-    <p>If Chrome never asks, run the curl command again and quit Chrome one more time.</p>
+    <p>Click ▶ on a live row. Chrome should ask to open <strong>Live Player</strong> (macOS/Linux: <strong>Live Player VLC</strong>). Click Open. VLC starts on that stream via streamlink.</p>
+    <p>If Chrome never asks, run the install command again and quit Chrome one more time.</p>
 
     <h2>Requirements</h2>
     <ul>
-      <li>VLC already installed (Mac: <code>/Applications/VLC.app</code>).</li>
+      <li>VLC already installed (Mac: <code>/Applications/VLC.app</code>; Windows: the default <code>Program Files\VideoLAN\VLC</code> location or on your <code>PATH</code>).</li>
       <li>This computer can reach the Live Player host.</li>
     </ul>
   </main>
@@ -64,6 +73,13 @@
     document.getElementById("copy").addEventListener("click", async () => {
       await navigator.clipboard.writeText(commandEl.textContent.trim());
       document.getElementById("copied").hidden = false;
+    });
+
+    const commandWinEl = document.getElementById("commandWin");
+    commandWinEl.textContent = `irm ${location.origin}/static/install-vlc-handler.ps1 | iex`;
+    document.getElementById("copyWin").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(commandWinEl.textContent.trim());
+      document.getElementById("copiedWin").hidden = false;
     });
   </script>
 </body>
