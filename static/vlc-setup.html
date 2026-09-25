@@ -22,8 +22,15 @@
       border:0; border-radius:8px; padding:8px 12px; cursor:pointer;
       background:var(--accent); color:#081018; font-weight:700;
     }
-    .row { display:flex; gap:8px; align-items:center; margin:8px 0 20px; }
+    .row { display:flex; gap:8px; align-items:center; margin:8px 0 20px; flex-wrap:wrap; }
     .ok { color:var(--live); }
+    .tabs { display:flex; gap:8px; margin:12px 0 8px; flex-wrap:wrap; }
+    .tabs button {
+      background:transparent; color:var(--muted); border:1px solid var(--line);
+      font-weight:600;
+    }
+    .tabs button.active { background:var(--accent); color:#081018; border-color:var(--accent); }
+    .os-panel[hidden] { display:none; }
   </style>
 </head>
 <body>
@@ -33,38 +40,75 @@
     <p>One-time setup on the computer that has Chrome and VLC. After this, Play opens VLC in one click.</p>
 
     <h2>1. Install</h2>
-    <p>Same command on <strong>macOS and Linux</strong>. Do not use sudo. Do not double-click a downloaded file.</p>
-    <pre id="command">curl -fsSL http://localhost:8112/static/install-vlc-handler.sh | bash</pre>
-    <div class="row">
-      <button type="button" id="copy">Copy command</button>
-      <span id="copied" hidden class="ok">Copied</span>
+    <p>Pick your OS. Do not use admin/sudo. Do not double-click a downloaded file.</p>
+    <div class="tabs" role="tablist">
+      <button type="button" id="tab-win" class="active" data-os="windows">Windows</button>
+      <button type="button" id="tab-unix" data-os="unix">macOS / Linux</button>
     </div>
-    <p>The script detects the OS. On a Mac it builds <code>~/Applications/Live Player VLC.app</code>. On Linux it registers a desktop handler. You should see <span class="ok">Done</span> and the path to the handler.</p>
+
+    <div id="panel-windows" class="os-panel">
+      <p>Run this in <strong>PowerShell</strong> (Windows key, type PowerShell, Enter):</p>
+      <pre id="command-win">powershell -ExecutionPolicy Bypass -Command "irm http://localhost:8112/static/install-vlc-handler.ps1 | iex"</pre>
+      <div class="row">
+        <button type="button" id="copy-win">Copy command</button>
+        <span id="copied-win" hidden class="ok">Copied</span>
+      </div>
+      <p>The script finds VLC, writes <code>%LOCALAPPDATA%\LivePlayer\live-player-open.cmd</code>, and registers the <code>liveplayer:</code> protocol for your user. You should see <span class="ok">Done</span>.</p>
+    </div>
+
+    <div id="panel-unix" class="os-panel" hidden>
+      <p>Same command on <strong>macOS and Linux</strong>:</p>
+      <pre id="command-unix">curl -fsSL http://localhost:8112/static/install-vlc-handler.sh | bash</pre>
+      <div class="row">
+        <button type="button" id="copy-unix">Copy command</button>
+        <span id="copied-unix" hidden class="ok">Copied</span>
+      </div>
+      <p>On a Mac it builds <code>~/Applications/Live Player VLC.app</code>. On Linux it registers a desktop handler. You should see <span class="ok">Done</span> and the path to the handler.</p>
+    </div>
 
     <h2>2. Restart Chrome</h2>
     <p>Fully quit Chrome, then reopen Live Player.</p>
     <ul>
+      <li><strong>Windows:</strong> Menu → Exit, or right-click the Chrome tray/taskbar icon → Close / Exit. Closing the window is not enough if Chrome stays in the background.</li>
       <li><strong>macOS:</strong> Cmd+Q. Closing the window is not enough.</li>
       <li><strong>Linux:</strong> Quit Chrome completely, or log out of the desktop session if the first Play click does nothing.</li>
     </ul>
 
     <h2>3. Click Play</h2>
-    <p>Click ▶ on a live row. Chrome should ask to open <strong>Live Player VLC</strong>. Click Open. VLC starts on that stream via streamlink.</p>
-    <p>If Chrome never asks, run the curl command again and quit Chrome one more time.</p>
+    <p>Click ▶ on a live row. Chrome should ask to open <strong>Live Player</strong> / <strong>Live Player VLC</strong>. Click Open. VLC starts on that stream via streamlink.</p>
+    <p>If Chrome never asks, run the install command again and quit Chrome one more time.</p>
 
     <h2>Requirements</h2>
     <ul>
-      <li>VLC already installed (Mac: <code>/Applications/VLC.app</code>).</li>
+      <li>VLC already installed (Windows: usually <code>C:\Program Files\VideoLAN\VLC\vlc.exe</code>; Mac: <code>/Applications/VLC.app</code>).</li>
       <li>This computer can reach the Live Player host.</li>
     </ul>
   </main>
   <script>
-    const commandEl = document.getElementById("command");
-    commandEl.textContent = `curl -fsSL ${location.origin}/static/install-vlc-handler.sh | bash`;
-    document.getElementById("copy").addEventListener("click", async () => {
-      await navigator.clipboard.writeText(commandEl.textContent.trim());
-      document.getElementById("copied").hidden = false;
-    });
+    const origin = location.origin;
+    const winCmd = document.getElementById("command-win");
+    const unixCmd = document.getElementById("command-unix");
+    winCmd.textContent =
+      `powershell -ExecutionPolicy Bypass -Command "irm ${origin}/static/install-vlc-handler.ps1 | iex"`;
+    unixCmd.textContent = `curl -fsSL ${origin}/static/install-vlc-handler.sh | bash`;
+
+    const isWindows = /Windows/i.test(navigator.userAgent);
+    function showOs(os) {
+      document.getElementById("panel-windows").hidden = os !== "windows";
+      document.getElementById("panel-unix").hidden = os !== "unix";
+      document.getElementById("tab-win").classList.toggle("active", os === "windows");
+      document.getElementById("tab-unix").classList.toggle("active", os === "unix");
+    }
+    showOs(isWindows ? "windows" : "unix");
+    document.getElementById("tab-win").addEventListener("click", () => showOs("windows"));
+    document.getElementById("tab-unix").addEventListener("click", () => showOs("unix"));
+
+    async function copyText(el, statusId) {
+      await navigator.clipboard.writeText(el.textContent.trim());
+      document.getElementById(statusId).hidden = false;
+    }
+    document.getElementById("copy-win").addEventListener("click", () => copyText(winCmd, "copied-win"));
+    document.getElementById("copy-unix").addEventListener("click", () => copyText(unixCmd, "copied-unix"));
   </script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Live Player VLC opener for macOS and Linux. Do not use sudo.
 #   curl -fsSL http://localhost:8112/static/install-vlc-handler.sh | bash
+# Windows: use install-vlc-handler.ps1 instead (see /static/vlc-setup.html).
 set -eu
 
 OS="$(uname -s)"
@@ -31,6 +32,17 @@ def stream_url(raw):
 def vlc_command():
     if sys.platform == "darwin":
         return ["open", "-a", "VLC"]
+    if sys.platform.startswith("win"):
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")):
+            if not base:
+                continue
+            candidate = os.path.join(base, "VideoLAN", "VLC", "vlc.exe")
+            if os.path.isfile(candidate):
+                return [candidate]
+        found = which("vlc") or which("vlc.exe")
+        if found:
+            return [found]
+        raise SystemExit("live-player-open: VLC is not installed")
     if which("vlc"):
         return ["vlc"]
     if which("flatpak"):
@@ -122,7 +134,8 @@ case "${OS}" in
     Linux) install_linux ;;
     Darwin) install_macos ;;
     *)
-        echo "Unsupported OS: ${OS}. Use Linux or macOS." >&2
+        echo "Unsupported OS: ${OS}." >&2
+        echo "On Windows, run install-vlc-handler.ps1 instead (see /static/vlc-setup.html)." >&2
         exit 1
         ;;
 esac

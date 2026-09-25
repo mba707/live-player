@@ -21,10 +21,28 @@ def stream_url(raw: str) -> str:
     return url
 
 
+def _windows_vlc() -> list[str]:
+    for base in (
+        os.environ.get("ProgramFiles"),
+        os.environ.get("ProgramFiles(x86)"),
+    ):
+        if not base:
+            continue
+        candidate = os.path.join(base, "VideoLAN", "VLC", "vlc.exe")
+        if os.path.isfile(candidate):
+            return [candidate]
+    found = which("vlc") or which("vlc.exe")
+    if found:
+        return [found]
+    raise FileNotFoundError("VLC is not installed")
+
+
 def vlc_command(platform: str | None = None) -> list[str]:
     plat = platform or sys.platform
     if plat == "darwin":
         return ["open", "-a", "VLC"]
+    if plat.startswith("win"):
+        return _windows_vlc()
     if which("vlc"):
         return ["vlc"]
     if which("flatpak"):

@@ -53,6 +53,12 @@ def test_liveplayer_opener_reads_stream_url():
         assert "refused" in str(exc)
 
 
-def test_liveplayer_opener_uses_macos_open_and_linux_vlc():
+def test_liveplayer_opener_uses_macos_open_and_linux_vlc(tmp_path, monkeypatch):
     opener = runpy.run_path(str(OPENER))
     assert opener["vlc_command"]("darwin") == ["open", "-a", "VLC"]
+    vlc = tmp_path / "VideoLAN" / "VLC" / "vlc.exe"
+    vlc.parent.mkdir(parents=True)
+    vlc.write_bytes(b"")
+    monkeypatch.setenv("ProgramFiles", str(tmp_path))
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
+    assert opener["vlc_command"]("win32") == [str(vlc)]
