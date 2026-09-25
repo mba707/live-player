@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -132,30 +133,35 @@ class ChannelStore:
 
     async def replace_source_streams(self, template: Channel, resolved: ResolvedChannel) -> list[Channel]:
         async with self._lock:
-            existing = [item for item in self._channels.values() if item.source_key() == template.source_key()]
-            if not existing:
-                return []
-            by_stream = {item.stream_id: item for item in existing}
-            added_at = min(item.added_at for item in existing)
-            keep_ids: set[str] = set()
-            updated: list[Channel] = []
-            for snapshot in resolved.display_snapshots():
-                prior = by_stream.get(snapshot.stream_id)
-                channel = self._channel_from_resolved(
-                    resolved,
-                    snapshot,
-                    existing=prior,
-                    added_at=added_at,
-                )
-                self._channels[channel.id] = channel
-                keep_ids.add(channel.id)
-                updated.append(channel)
-            for item in existing:
-                if item.id not in keep_ids:
-                    del self._channels[item.id]
-            self.last_refresh = utcnow()
+            updated = self._replace_source_streams_locked(template, resolved)
             self._write_unlocked()
-            return [item.model_copy(deep=True) for item in sort_channels(updated)]
+            return updated
+
+    def _replace_source_streams_locked(self, template: Channel, resolved: ResolvedChannel) -> list[Channel]:
+        """Caller must hold self._lock and write afterwards."""
+        existing = [item for item in self._channels.values() if item.source_key() == template.source_key()]
+        if not existing:
+            return []
+        by_stream = {item.stream_id: item for item in existing}
+        added_at = min(item.added_at for item in existing)
+        keep_ids: set[str] = set()
+        updated: list[Channel] = []
+        for snapshot in resolved.display_snapshots():
+            prior = by_stream.get(snapshot.stream_id)
+            channel = self._channel_from_resolved(
+                resolved,
+                snapshot,
+                existing=prior,
+                added_at=added_at,
+            )
+            self._channels[channel.id] = channel
+            keep_ids.add(channel.id)
+            updated.append(channel)
+        for item in existing:
+            if item.id not in keep_ids:
+                del self._channels[item.id]
+        self.last_refresh = utcnow()
+        return [item.model_copy(deep=True) for item in sort_channels(updated)]
 
     async def apply_snapshot(self, channel_id: str, snapshot: ChannelSnapshot, error: str = "") -> Channel | None:
         async with self._lock:
@@ -189,10 +195,21 @@ class ChannelStore:
 
     async def mark_error(self, channel_id: str, error: str) -> None:
         async with self._lock:
-            channel = self._channels.get(channel_id)
-            if channel is None:
-                return
-            channel.last_checked = utcnow()
-            channel.last_error = error
-            self.last_refresh = channel.last_checked
+            self._mark_error_locked(channel_id, error)
+            self._write_unlocked()
+
+    def _mark_error_locked(self, channel_id: str, error: str) -> None:
+        """Caller must hold self._lock and write afterwards."""
+        channel = self._channels.get(channel_id)
+        if channel is None:
+            return
+        channel.last_checked = utcnow()
+        channel.last_error = error
+        self.last_refresh = channel.last_checked
+
+    @asynccontextmanager
+    async def batch(self):
+        """Hold the lock across several *_locked mutations, writing to disk once at the end."""
+        async with self._lock:
+            yield
             self._write_unlocked()

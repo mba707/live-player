@@ -72,7 +72,7 @@ class StreamPlayer:
             raise PlayerError("Channel has no stream URL")
         async with self._lock:
             existing = self._sessions.get(channel.id)
-            if existing and existing.process and existing.process.returncode is None:
+            if existing and not self._is_dead(existing):
                 return existing
             port = self._allocate_port()
             process = await self._spawn(channel.url, port)
@@ -84,8 +84,10 @@ class StreamPlayer:
                 process=process,
             )
             self._sessions[channel.id] = session
-            await self._wait_for_port(process, port)
-            return session
+        # Wait for the port outside the lock: this can take several seconds and must not
+        # block play() calls for other channels from allocating their own ports.
+        await self._wait_for_port(process, port)
+        return session
 
     async def stop(self, channel_id: str) -> None:
         async with self._lock:
@@ -104,9 +106,23 @@ class StreamPlayer:
             await self.stop(channel_id)
 
     def get(self, channel_id: str) -> PlaySession | None:
-        return self._sessions.get(channel_id)
+        session = self._sessions.get(channel_id)
+        if session and self._is_dead(session):
+            del self._sessions[channel_id]
+            return None
+        return session
+
+    @staticmethod
+    def _is_dead(session: PlaySession) -> bool:
+        return session.process is not None and session.process.returncode is not None
+
+    def _prune_dead_sessions(self) -> None:
+        dead_ids = [channel_id for channel_id, session in self._sessions.items() if self._is_dead(session)]
+        for channel_id in dead_ids:
+            del self._sessions[channel_id]
 
     def _allocate_port(self) -> int:
+        self._prune_dead_sessions()
         used = {session.port for session in self._sessions.values()}
         for port in range(self.settings.stream_port_start, self.settings.stream_port_end + 1):
             if port not in used:
@@ -128,7 +144,7 @@ class StreamPlayer:
         try:
             return await asyncio.create_subprocess_exec(
                 *command,
-                stdout=asyncio.subprocess.DEVNULL,
+                stdout=None,
                 stderr=asyncio.subprocess.STDOUT,
             )
         except FileNotFoundError as exc:

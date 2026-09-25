@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import logging
+import asyncio
 from typing import Any
 
 import httpx
@@ -8,8 +8,6 @@ import httpx
 from liveplayer.models import Channel, ChannelSnapshot, ResolvedChannel, candidate_from_resolved
 
 from .base import ChannelLookupError
-
-logger = logging.getLogger(__name__)
 
 TWITCH_WEB_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko"
 USER_FIELDS = """
@@ -67,16 +65,8 @@ class TwitchClient:
         return [candidate_from_resolved(resolved)]
 
     async def refresh(self, channels: list[Channel]) -> dict[str, ResolvedChannel]:
-        results: dict[str, ResolvedChannel] = {}
-        for channel in channels:
-            try:
-                results[channel.id] = await self.resolve(channel.username)
-            except ChannelLookupError:
-                raise
-            except Exception as exc:  # noqa: BLE001 - per-channel poll should not abort the rest
-                logger.warning("Twitch refresh failed for %s: %s", channel.username, exc)
-                raise
-        return results
+        resolved = await asyncio.gather(*(self.resolve(channel.username) for channel in channels))
+        return {channel.id: result for channel, result in zip(channels, resolved)}
 
     async def _resolve_gql(self, identifier: str) -> ResolvedChannel:
         if identifier.isdigit():

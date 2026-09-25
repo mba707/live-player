@@ -38,24 +38,25 @@ class StreamPoller:
             return
         results = await self.registry.refresh(channels)
         processed: set[tuple[str, str]] = set()
-        for channel in channels:
-            result = results.get(channel.id)
-            if isinstance(result, Exception):
-                message = (
-                    str(result)
-                    if isinstance(result, ChannelLookupError)
-                    else f"Refresh failed: {result}"
-                )
-                logger.warning("Refresh error for %s: %s", channel.username, message)
-                await self.store.mark_error(channel.id, message)
-                continue
-            if result is None:
-                continue
-            source = channel.source_key()
-            if source in processed:
-                continue
-            processed.add(source)
-            await self.store.replace_source_streams(channel, result)
+        async with self.store.batch():
+            for channel in channels:
+                result = results.get(channel.id)
+                if isinstance(result, Exception):
+                    message = (
+                        str(result)
+                        if isinstance(result, ChannelLookupError)
+                        else f"Refresh failed: {result}"
+                    )
+                    logger.warning("Refresh error for %s: %s", channel.username, message)
+                    self.store._mark_error_locked(channel.id, message)
+                    continue
+                if result is None:
+                    continue
+                source = channel.source_key()
+                if source in processed:
+                    continue
+                processed.add(source)
+                self.store._replace_source_streams_locked(channel, result)
 
     async def refresh_one(self, channel_id: str) -> Channel | ChannelSnapshot | None:
         channel = await self.store.get(channel_id)

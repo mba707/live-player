@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -39,10 +40,8 @@ class KickClient:
         return [candidate_from_resolved(resolved)]
 
     async def refresh(self, channels: list[Channel]) -> dict[str, ResolvedChannel]:
-        results: dict[str, ResolvedChannel] = {}
-        for channel in channels:
-            results[channel.id] = await self.resolve(channel.username)
-        return results
+        resolved = await asyncio.gather(*(self.resolve(channel.username) for channel in channels))
+        return {channel.id: result for channel, result in zip(channels, resolved)}
 
     def _from_payload(self, slug: str, payload: dict[str, Any]) -> ResolvedChannel:
         user = payload.get("user") or {}

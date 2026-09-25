@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from liveplayer.models import Channel, ChannelCandidate, Platform, ResolvedChannel
 from liveplayer.platforms.base import ChannelLookupError, PlatformClient
 from liveplayer.platforms.kick import KickClient
@@ -28,22 +30,26 @@ class PlatformRegistry:
         for channel in channels:
             grouped.setdefault(channel.platform, []).append(channel)
 
+        group_results = await asyncio.gather(
+            *(self._refresh_group(platform, group) for platform, group in grouped.items())
+        )
         results: dict[str, ResolvedChannel | Exception] = {}
-        for platform, group in grouped.items():
-            client = self.get(platform)
-            try:
-                resolved = await client.refresh(group)
-                results.update(resolved)
-            except Exception as exc:  # noqa: BLE001 - keep other platforms polling
-                for channel in group:
-                    try:
-                        results[channel.id] = await client.resolve(channel.username)
-                    except Exception as inner:  # noqa: BLE001
-                        results[channel.id] = inner
-                if not any(channel.id in results for channel in group):
-                    for channel in group:
-                        results[channel.id] = exc
+        for group_result in group_results:
+            results.update(group_result)
         return results
+
+    async def _refresh_group(
+        self, platform: Platform, group: list[Channel]
+    ) -> dict[str, ResolvedChannel | Exception]:
+        client = self.get(platform)
+        try:
+            return await client.refresh(group)
+        except Exception:  # noqa: BLE001 - fall back to per-channel resolves, keep other platforms polling
+            outcomes = await asyncio.gather(
+                *(client.resolve(channel.username) for channel in group),
+                return_exceptions=True,
+            )
+            return {channel.id: outcome for channel, outcome in zip(group, outcomes)}
 
 
 def default_clients(http, settings) -> dict[Platform, PlatformClient]:

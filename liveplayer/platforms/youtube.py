@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -46,7 +47,8 @@ class YoutubeClient:
         channel_id = self._extract_channel_id(html)
         if not channel_id:
             raise ChannelLookupError(f"YouTube channel {handle!r} was not found")
-        display = _unescape(TITLE_RE.search(html).group(1) if TITLE_RE.search(html) else handle)
+        title_match = TITLE_RE.search(html)
+        display = _unescape(title_match.group(1) if title_match else handle)
         clean_display = display.removesuffix(" - YouTube").strip() or handle
         channel_url = f"https://www.youtube.com/channel/{channel_id}"
         streams = await self._list_live_videos(channel_id, clean_display)
@@ -123,14 +125,10 @@ class YoutubeClient:
         return (text.startswith("UC") and len(text) >= 24) or "youtube.com/channel/" in lowered
 
     async def refresh(self, channels: list[Channel]) -> dict[str, ResolvedChannel]:
-        results: dict[str, ResolvedChannel] = {}
-        cache: dict[str, ResolvedChannel] = {}
-        for channel in channels:
-            key = channel.channel_id or channel.username
-            if key not in cache:
-                cache[key] = await self.resolve(key)
-            results[channel.id] = cache[key]
-        return results
+        keys = {channel.channel_id or channel.username for channel in channels}
+        resolved = await asyncio.gather(*(self.resolve(key) for key in keys))
+        cache = dict(zip(keys, resolved))
+        return {channel.id: cache[channel.channel_id or channel.username] for channel in channels}
 
     async def _list_live_videos(self, channel_id: str, display: str) -> list[ChannelSnapshot]:
         payload = await self._browse_streams(channel_id)
@@ -282,7 +280,7 @@ def _snapshot_from_lockup(
     blob = json.dumps(item)
     if '"text": "LIVE"' not in blob and "THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE" not in blob:
         return None
-    video_id = _lockup_video_id(item)
+    video_id = _lockup_video_id(item, blob)
     if not video_id:
         return None
     metadata = (item.get("metadata") or {}).get("lockupMetadataViewModel") or {}
@@ -307,13 +305,14 @@ def _snapshot_from_video_renderer(
     channel_id: str,
     display_name: str,
 ) -> ChannelSnapshot | None:
-    if not _video_renderer_is_live(item):
+    blob = json.dumps(item)
+    if not _video_renderer_is_live(item, blob):
         return None
     video_id = str(item.get("videoId") or "")
     if not VIDEO_ID_TOKEN_RE.match(video_id):
         return None
     title = _yt_text(item.get("title"))
-    viewers = parse_watching_count(_yt_text(item.get("viewCountText")) or json.dumps(item))
+    viewers = parse_watching_count(_yt_text(item.get("viewCountText")) or blob)
     thumbs = ((item.get("thumbnail") or {}).get("thumbnails") or [])
     thumb = thumbs[-1].get("url") if thumbs else f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
     return ChannelSnapshot(
@@ -328,8 +327,7 @@ def _snapshot_from_video_renderer(
     )
 
 
-def _video_renderer_is_live(item: dict[str, Any]) -> bool:
-    blob = json.dumps(item)
+def _video_renderer_is_live(item: dict[str, Any], blob: str) -> bool:
     if '"style": "LIVE"' in blob or '"text": "LIVE"' in blob or '"isLive": true' in blob:
         return True
     for overlay in item.get("thumbnailOverlays") or []:
@@ -339,11 +337,10 @@ def _video_renderer_is_live(item: dict[str, Any]) -> bool:
     return False
 
 
-def _lockup_video_id(item: dict[str, Any]) -> str:
+def _lockup_video_id(item: dict[str, Any], blob: str) -> str:
     content_id = str(item.get("contentId") or "")
     if VIDEO_ID_TOKEN_RE.match(content_id):
         return content_id
-    blob = json.dumps(item)
     match = re.search(r'"addedVideoId":\s*"([\w-]{11})"', blob)
     if match:
         return match.group(1)
