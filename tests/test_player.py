@@ -100,3 +100,45 @@ def test_play_keeps_only_two_streams_and_drops_the_oldest(tmp_path):
     assert first.process.returncode == -15
     assert second.process.returncode is None
     assert third.port == first.port
+
+
+def test_reap_idle_stops_only_streams_without_a_viewer(tmp_path):
+    import asyncio
+    import time
+
+    from liveplayer.player import PlaySession
+
+    settings = make_settings(tmp_path, stream_idle_seconds=300)
+
+    class Proc:
+        def __init__(self):
+            self.returncode = None
+
+        def terminate(self):
+            self.returncode = -15
+
+        async def wait(self):
+            return self.returncode
+
+    class Player(StreamPlayer):
+        connected: set[int] = set()
+
+        def _connected_ports(self):
+            return self.connected
+
+    async def scenario():
+        player = Player(settings)
+        old = time.monotonic() - 400
+        watched = PlaySession("watched", "w", "u1", 8888, Proc(), last_active=old)
+        idle = PlaySession("idle", "i", "u2", 8889, Proc(), last_active=old)
+        fresh = PlaySession("fresh", "f", "u3", 8890, Proc())
+        for session in (watched, idle, fresh):
+            player._sessions[session.channel_id] = session
+        player.connected = {8888}
+        await player._reap_idle()
+        return player, watched, idle, fresh
+
+    player, watched, idle, fresh = asyncio.run(scenario())
+    assert set(player._sessions) == {"watched", "fresh"}
+    assert idle.process.returncode == -15
+    assert watched.process.returncode is None and fresh.process.returncode is None
