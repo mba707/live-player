@@ -23,6 +23,7 @@ class Settings:
     twitch_client_id: str
     twitch_client_secret: str
     youtube_api_key: str
+    stream_idle_seconds: int = 300
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -38,6 +39,7 @@ class Settings:
             twitch_client_id=os.environ.get("TWITCH_CLIENT_ID", ""),
             twitch_client_secret=os.environ.get("TWITCH_CLIENT_SECRET", ""),
             youtube_api_key=os.environ.get("YOUTUBE_API_KEY", ""),
+            stream_idle_seconds=_int("STREAM_IDLE_SECONDS", 300),
         )
 
 
