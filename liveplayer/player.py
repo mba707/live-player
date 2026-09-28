@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
-import time
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
@@ -24,7 +23,6 @@ class PlaySession:
     url: str
     port: int
     process: asyncio.subprocess.Process | None = field(default=None, repr=False)
-    last_active: float = field(default_factory=time.monotonic, repr=False)
 
 
 class StreamPlayer:
@@ -35,7 +33,6 @@ class StreamPlayer:
         self.streamlink_bin = streamlink_bin or shutil.which("streamlink") or "streamlink"
         self._sessions: dict[str, PlaySession] = {}
         self._lock = asyncio.Lock()
-        self._reaper: asyncio.Task | None = None
 
     def playlist_body(self, session: PlaySession) -> str:
         stream_url = self.public_stream_url(session.port)
@@ -73,11 +70,9 @@ class StreamPlayer:
     async def play(self, channel: Channel) -> PlaySession:
         if not channel.url:
             raise PlayerError("Channel has no stream URL")
-        self._ensure_reaper()
         async with self._lock:
             existing = self._sessions.get(channel.id)
             if existing and not self._is_dead(existing):
-                existing.last_active = time.monotonic()
                 return existing
             port = await self._allocate_port()
             process = await self._spawn(channel.url, port)
@@ -101,9 +96,6 @@ class StreamPlayer:
             await self._terminate(session)
 
     async def stop_all(self) -> None:
-        if self._reaper:
-            self._reaper.cancel()
-            self._reaper = None
         async with self._lock:
             ids = list(self._sessions)
         for channel_id in ids:
@@ -126,73 +118,18 @@ class StreamPlayer:
             del self._sessions[channel_id]
 
     async def _allocate_port(self) -> int:
-        """Caller must hold self._lock."""
+        """Caller must hold self._lock. Drops the oldest streams to stay within the session cap."""
         self._prune_dead_sessions()
-        port = self._free_port()
-        if port is None:
-            await self._evict_idle(limit=1)
-            port = self._free_port()
-        if port is None:
-            raise PlayerError("All VLC stream ports are in use by active viewers")
-        return port
-
-    def _free_port(self) -> int | None:
+        while len(self._sessions) >= self.settings.stream_max_sessions:
+            oldest_id = next(iter(self._sessions))
+            oldest = self._sessions.pop(oldest_id)
+            logger.info("Stream limit reached; stopping oldest stream %s on port %s", oldest.url, oldest.port)
+            await self._terminate(oldest)
         used = {session.port for session in self._sessions.values()}
         for port in range(self.settings.stream_port_start, self.settings.stream_port_end + 1):
             if port not in used:
                 return port
-        return None
-
-    def _connected_ports(self) -> set[int]:
-        """Local ports with an ESTABLISHED client, read from /proc (Linux only)."""
-        ports: set[int] = set()
-        for table in ("/proc/net/tcp", "/proc/net/tcp6"):
-            try:
-                with open(table) as handle:
-                    next(handle, None)
-                    for line in handle:
-                        fields = line.split()
-                        if len(fields) > 3 and fields[3] == "01":
-                            ports.add(int(fields[1].rsplit(":", 1)[1], 16))
-            except OSError:
-                continue
-        return ports
-
-    def _refresh_activity(self) -> None:
-        now = time.monotonic()
-        connected = self._connected_ports()
-        for session in self._sessions.values():
-            if session.port in connected:
-                session.last_active = now
-
-    async def _evict_idle(self, *, limit: int | None = None, older_than: float = 0.0) -> None:
-        """Stop sessions with no connected viewer, least recently active first."""
-        self._refresh_activity()
-        now = time.monotonic()
-        idle = sorted(
-            (s for s in self._sessions.values() if now - s.last_active >= older_than),
-            key=lambda s: s.last_active,
-        )
-        connected = self._connected_ports()
-        idle = [s for s in idle if s.port not in connected]
-        for session in idle[:limit]:
-            logger.info("Stopping idle stream for %s on port %s", session.url, session.port)
-            self._sessions.pop(session.channel_id, None)
-            await self._terminate(session)
-
-    def _ensure_reaper(self) -> None:
-        if self._reaper is None and self.settings.stream_idle_seconds > 0:
-            self._reaper = asyncio.create_task(self._reap_loop(), name="stream-reaper")
-
-    async def _reap_loop(self) -> None:
-        while True:
-            await asyncio.sleep(30)
-            try:
-                async with self._lock:
-                    self._prune_dead_sessions()
-                    await self._evict_idle(older_than=self.settings.stream_idle_seconds)
-            except Exception:  # noqa: BLE001
-                logger.exception("Stream reaper failed")
+        raise PlayerError("All VLC stream ports are in use")
 
     @staticmethod
     async def _terminate(session: PlaySession) -> None:

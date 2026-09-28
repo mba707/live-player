@@ -56,3 +56,47 @@ def test_liveplayer_opener_reads_stream_url():
 def test_liveplayer_opener_uses_macos_open_and_linux_vlc():
     opener = runpy.run_path(str(OPENER))
     assert opener["vlc_command"]("darwin") == ["open", "-a", "VLC"]
+
+
+def test_play_keeps_only_two_streams_and_drops_the_oldest(tmp_path):
+    import asyncio
+
+    settings = make_settings(tmp_path)
+    assert settings.stream_max_sessions == 2
+
+    class Proc:
+        def __init__(self):
+            self.returncode = None
+
+        def terminate(self):
+            self.returncode = -15
+
+        def kill(self):
+            self.returncode = -9
+
+        async def wait(self):
+            return self.returncode
+
+    class Player(StreamPlayer):
+        async def _spawn(self, url, port):
+            return Proc()
+
+        async def _wait_for_port(self, process, port):
+            return None
+
+    async def scenario():
+        player = Player(settings)
+        channels = [
+            Channel(id=f"c{i}", platform="twitch", username=f"u{i}", url=f"https://twitch.tv/u{i}", live=True)
+            for i in range(3)
+        ]
+        first = await player.play(channels[0])
+        second = await player.play(channels[1])
+        third = await player.play(channels[2])
+        return player, first, second, third
+
+    player, first, second, third = asyncio.run(scenario())
+    assert list(player._sessions) == ["c1", "c2"]
+    assert first.process.returncode == -15
+    assert second.process.returncode is None
+    assert third.port == first.port
