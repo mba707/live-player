@@ -20,6 +20,7 @@ CANONICAL_RE = re.compile(
 )
 TITLE_RE = re.compile(r'<meta property="og:title" content="([^"]+)"')
 LIVE_BADGE_RE = re.compile(r'"isLiveNow"\s*:\s*true|"isLive":true')
+PLAYABILITY_RE = re.compile(r'"playabilityStatus"\s*:\s*\{\s*"status"\s*:\s*"([A-Z_]+)"')
 VIDEO_ID_RE = re.compile(r'"videoId":"([\w-]{11})"')
 VIDEO_ID_TOKEN_RE = re.compile(r"^[\w-]{11}$")
 WATCHING_RE = re.compile(r"([\d,.]+)\s*([kKmMbB])?\s+watching", re.I)
@@ -197,7 +198,8 @@ class YoutubeClient:
         display: str,
         html: str,
     ) -> ChannelSnapshot:
-        live = bool(LIVE_BADGE_RE.search(html))
+        playability = PLAYABILITY_RE.search(html)
+        live = bool(LIVE_BADGE_RE.search(html)) and (playability is None or playability.group(1) == "OK")
         viewers = parse_watching_count(html) if live else 0
         title = ""
         video_id = ""
@@ -328,6 +330,8 @@ def _snapshot_from_video_renderer(
 
 
 def _video_renderer_is_live(item: dict[str, Any], blob: str) -> bool:
+    if '"upcomingEventData"' in blob:
+        return False
     if '"style": "LIVE"' in blob or '"text": "LIVE"' in blob or '"isLive": true' in blob:
         return True
     for overlay in item.get("thumbnailOverlays") or []:

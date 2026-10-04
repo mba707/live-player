@@ -269,3 +269,39 @@ def test_parse_youtube_live_videos_from_lockups():
     assert lives[0].title == "Starbase Live"
     assert lives[0].viewers == 1200
     assert lives[0].url == "https://www.youtube.com/watch?v=mhJRzQsLZGg"
+
+
+@respx.mock
+async def test_youtube_scheduled_stream_is_not_live():
+    html = (
+        '<link rel="canonical" href="https://www.youtube.com/channel/UCkQef3Fidr7tm3gNuXgGKPw">'
+        '<meta property="og:title" content="BIG JET TV">'
+        '"playabilityStatus":{"status":"LIVE_STREAM_OFFLINE","reason":"This live event will begin in 25 minutes."}'
+        '"isLive":true "isUpcoming":true "isLiveNow":false "text":"LIVE" "videoId":"Tp49a8I5zYE"'
+    )
+    respx.get(url__startswith="https://www.youtube.com/").mock(return_value=httpx.Response(200, text=html))
+    respx.post("https://www.youtube.com/youtubei/v1/browse?prettyPrint=false").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    async with httpx.AsyncClient() as http:
+        resolved = await YoutubeClient(http).resolve("UCkQef3Fidr7tm3gNuXgGKPw")
+    assert resolved.snapshot.live is False
+    assert resolved.streams == []
+
+
+def test_parse_youtube_skips_upcoming_videos_in_browse_results():
+    payload = {
+        "contents": [
+            {
+                "videoRenderer": {
+                    "videoId": "Tp49a8I5zYE",
+                    "title": {"runs": [{"text": "Scheduled"}]},
+                    "thumbnailOverlays": [
+                        {"thumbnailOverlayTimeStatusRenderer": {"style": "LIVE"}}
+                    ],
+                    "upcomingEventData": {"startTime": "1800000000"},
+                }
+            }
+        ]
+    }
+    assert parse_youtube_live_videos(payload, channel_id="UCkQef3Fidr7tm3gNuXgGKPw") == []
